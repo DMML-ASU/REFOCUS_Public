@@ -1,0 +1,185 @@
+from gensim import corpora
+import pickle
+import gensim
+from nltk.tokenize import TweetTokenizer
+import json
+import string
+import datetime
+import io
+import csv
+import random
+
+# import spacy
+# spacy.load('en')
+# from spacy.lang.en import English
+# parser = English()
+
+
+def tokenize(text):
+	english_stop = set()
+	for word in open('../../Data/Other/stopwords_long.txt'):
+		english_stop.add(word.strip())
+	lda_tokens = []
+	# tokens = parser(text)
+	tknzr = TweetTokenizer()
+	tokens = tknzr.tokenize(text)
+	for token in tokens:
+		# if token.orth_.isspace():
+		# 	continue
+		# if tokens.like_url:
+		token.replace(string.whitespace, '')
+		if len(token) == 0:
+			continue
+		# elif token.startswith('http'):
+			# lda_tokens.append('URL')
+		# elif token.startswith('@'):
+			# # mention
+		elif not token.startswith('http') and not token.startswith('@'):
+			lda_tokens.append(token.lower())
+	lda_tokens = [token for token in lda_tokens if len(token) > 4 and token not in english_stop]
+	return lda_tokens
+
+
+def load_json(file_name):
+	with io.open(file=file_name, encoding='utf-8') as tweets_file:
+		for line in tweets_file:
+			tweet = json.loads(line)
+			# print(line)
+
+			temp = tweets.get(tweet['user']['id_str'], [])
+			temp.append(tweet['text'])
+			tweets[tweet['user']['id_str']] = temp[:]
+
+
+def load_csv(file_name):
+	with open(file_name) as csv_file:
+		csv_reader = csv.reader(csv_file, delimiter='\t')  # if the csv or txt file is separated by tab
+		for line in csv_reader:
+			if line[0] in labels.keys():  # line[0] = UserID, line[1] = TweetID, line[2] = text, line[3] = created_at
+				temp = tweets.get(line[0], [])
+				temp.append(line[2])
+				tweets[line[0]] = temp[:]
+
+
+def caverlee_load(random_sample_bool):
+	bots = set()
+	humans = set()
+
+	with open(relative_load_path + 'content_polluters.txt', 'rt') as bot_file:
+		for line in bot_file:
+			temp = line.split('\t')
+			bots.add(temp[0])
+			# labels[temp[0]] = 1  # bots
+
+	with open(relative_load_path + 'legitimate_users.txt', 'rt') as human_file:
+		for line in human_file:
+			temp = line.split('\t')
+			humans.add(temp[0])
+			# labels[temp[0]] = -1  # humans
+
+	if random_sample_bool:
+		# Randomly sample users
+		for user in random.sample(bots, 5000):
+			labels[user] = 1
+
+		for user in random.sample(humans, 5000):
+			labels[user] = -1
+	else:
+		for user in bots:
+			labels[user] = 1
+		for user in humans:
+			labels[user] = -1
+
+	# Load Caverlee Dataset Tweets
+	load_csv(relative_load_path + 'content_polluters_tweets.txt')
+	load_csv(relative_load_path + 'legitimate_users_tweets.txt')
+
+
+def morstatter_load():
+	# Load Morstatter Dataset Tweets
+	# load_json(relative_load_path + 'full_tweets_part1.json')
+	# load_json(relative_load_path + 'full_tweets_part2.json')
+	load_json(relative_load_path + 'bot_tweets.json')
+	load_json(relative_load_path + 'human_tweets.json')
+
+	with open(relative_load_path + 'labels.txt', 'r') as csv_file:
+		label_file = csv.reader(csv_file, delimiter='\t')
+		for line in label_file:
+			labels[line[0]] = int(line[1])  # line[0] = UserID, line[1] = -1 or 1
+
+
+if __name__ == '__main__':
+	# Initialize variables
+	tweets = dict()
+	labels = dict()
+	relative_load_path = '../../Data/Datasets/'
+	relative_save_path = '../../Data/LDA/'
+
+	# Choose which dataset to use
+	dataset = raw_input("Which dataset would you like to use? (1: Caverlee, 2: Cresci, 3: Morstatter) ")
+	if dataset == '1' or dataset.lower().startswith('cav'):
+		print('Starting data load from Caverlee Dataset')
+		relative_load_path += 'Caverlee-Dataset/'
+		relative_save_path += 'Caverlee-Dataset/'
+		random_sample = raw_input("Would you like to randomly sample the dataset? ")
+		if random_sample.lower().startswith('y'):
+			caverlee_load(True)
+		else:
+			caverlee_load(False)
+	elif dataset == '2' or dataset.lower().startswith('cre'):
+		print('Starting data load from Cresci Dataset')
+		print('Exiting')
+		exit()
+	else:
+		print('Starting data load from Morstatter Dataset')
+		relative_load_path += 'Morstatter-Dataset/'
+		relative_save_path += 'Morstatter-Dataset/'
+		morstatter_load()
+
+	print('{0} users found!'.format(len(tweets)))
+
+	# Tokenize the data with the "tokenize()" function defined at the beginning of this file
+	text_data = []
+	for user in tweets:
+		text = '. '.join(tweets[user])
+		if relative_load_path.endswith('Morstatter-Dataset/'):
+			tokens = tokenize(text.encode('utf-8'))
+		else:
+			tokens = tokenize(str(text))
+		text_data.append(tokens)
+
+	dictionary = corpora.Dictionary(text_data)
+	dictionary.save_as_text(relative_save_path + 'dictionary.txt')
+	corpus = [dictionary.doc2bow(text) for text in text_data]
+	pickle.dump(corpus, open(relative_save_path + 'corpus.pkl', 'wb'))
+
+	# NUM_TOPICS = [50, 100, 150, 200, 250, 300, 350, 400, 450, 500]
+	NUM_TOPICS = [300, 350, 400, 450, 500]
+	for NUM_TOPIC in NUM_TOPICS:
+		print('LDA model using {0} topics started at {1}'.format(NUM_TOPIC, datetime.datetime.now()))
+		ldamodel = gensim.models.ldamodel.LdaModel(corpus, num_topics=NUM_TOPIC, id2word=dictionary, passes=15, minimum_probability=0)
+		ldamodel.save(relative_save_path + str(NUM_TOPIC) + '_model.pkl')
+
+		# Write the topics to text file
+		topics = ldamodel.print_topics(num_topics=NUM_TOPIC, num_words=4)
+		topics_file_name = relative_save_path + str(NUM_TOPIC) + '_topics.txt'
+		with open(topics_file_name, 'w') as t:
+			for topic in topics:
+				# print(topic)
+				t.write(str(topic))
+				t.write('\n')
+
+		# Write the users' IDs along with their topic probability and human/bot tag into topic_probability text file
+		topic_prob_file_name = relative_save_path + str(NUM_TOPIC) + '_topic_probability.txt'
+		with open(topic_prob_file_name, 'w') as f:
+			for user in tweets:
+				if user not in labels.keys():  # skip users who do not have a label
+					continue
+				text = '. '.join(tweets[user])
+				if relative_load_path.endswith('Morstatter-Dataset/'):
+					tokens = tokenize(text.encode('utf-8'))
+				else:
+					tokens = tokenize(str(text))
+				corp = dictionary.doc2bow(tokens)
+				temp = ldamodel[corp]
+				f.write(str(user) + ', ' + str(labels[user]) + ', ' + ', '.join([str(x[1]) for x in temp]) + '\n')
