@@ -5,9 +5,11 @@ Please use this citation when using this data and code:
 ```
 @inproceedings{nazer2019bot,
   title={Bot Detection: Will Focusing on Recall Cause Overall Performance Deterioration?},
-  author={Nazer, Tahora H and Davis, Matthew and Karami, Mansooreh and Akoglu, Leman and Koelle, David and Liu, Huan}
-  booktitle={International Conference on Social Computing, Behavioral-Cultural Modeling & Prediction and Behavior Representation in Modeling and Simulation (SBP-BRiMS)},
-  year={2019}
+  author={Nazer, Tahora H and Davis, Matthew and Karami, Mansooreh and Akoglu, Leman and Koelle, David and Liu, Huan},
+  booktitle={International Conference on Social Computing, Behavioral-Cultural Modeling and Prediction and Behavior Representation in Modeling and Simulation},
+  pages={39--49},
+  year={2019},
+  organization={Springer}
 }
 ```
 Raw data is from 3 publications listed bellow and available as a zip file in this repo:
